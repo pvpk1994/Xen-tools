@@ -30,6 +30,21 @@ if [[ $EUID -ne 0 ]]; then
 	exit 1
 fi
 
+check_xenbr0() {
+	local VM_NAME="$1"
+	local CFG_FILE="/etc/xen/${VM_NAME}.cfg"
+
+	# Check if VIF interface has xenbr0 configured
+	if ! grep -q "bridge=xenbr0" "$CFG_FILE"; then
+		echo "Host-side network bridge (Xenbr0) not configured"
+		echo "${VM_NAME} DomU will boot without network access!"
+
+	else
+		echo "VIF for the guest has Xenbr0 network bridge configured"
+		echo "${VM_NAME} DomU will access network via Dom0's xenbr0"
+	fi
+}
+
 update_vm_cfg() {
 	local VM_NAME="$1"
 	local KERN_IMG="$2"
@@ -114,6 +129,7 @@ if [[ "$choice" == "1" ]]; then
 
 	# Once here, configuration file should have been successfully generated
 	update_vm_cfg "$VM_NAME" "$KERN_IMG" "$INITRD_IMG"
+	check_xenbr0 "$VM_NAME"
 
 elif [[ "$choice" == "2" ]]; then
 	echo "Option 2 selected. Running ./vm_configure.sh for option 2"
