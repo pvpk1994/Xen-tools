@@ -22,32 +22,43 @@ Following steps can be taken to ensure network access to the DomU is restored.
 
 	brctl show
 
-	bridge name     bridge id               STP enabled     interfaces
-	xenb0           8000.bec2d2935e73       	no
-	xenbr0          8000.1afffa87021d       	no      enp162s0
-                                                        	vif44.0
+	|bridge name|     bridge id         |  STP enabled |    interfaces        |
+	|-----------|-----------------------|--------------|----------------------|
+	|xenb0      |     8000.bec2d2935e73 |   no	   |			  |
+	|xenbr0     |     8000.1afffa87021d |   no         |	enp162s0, vif44.0 |
+
 
 - <code>vif44.0</code> indicates vif has been created successfully and configured to <code>xenbr0</code>
 
 - Although, things are setup properly on the host, guest VM dmesg can still report the following:
 
-	Failed to start raise network interfaces
+		Failed to start raise network interfaces
 
 - This usually suggests that guest VM's networking service could not bring up expected network interfaces during boot.
 
 - Look at the system's network interfaces and their respective IP addresses:
 
-	ip a 
+		ip a 
 
 - If any of the interfaces (example: <code>enX0</code>) are <code>DOWN</code>. Bring them <code>UP</code> using:
 
-	sudo ip link set <interface-name> up
+		sudo ip link set <interface-name> up
 
 - Once the interface is <code>UP</code>, go to <code>/etc/network/interfaces</code> and make changes as follows:
 
-	auto <interface-name>
-	iface <interface-name> inet dhcp
+		auto <interface-name>
+		iface <interface-name> inet dhcp
 
 - Restart the network service and this should restore the network access:
 
-	sudo systemctl restart networking
+		sudo systemctl restart networking
+
+### Modifications required to launch-qemu script
+
+<code>vm_configure.sh</code> assists in setting up TAP device and configuring it with <code>xenbr0</code> bridge.
+
+The following changes are therefore needed to launch-qemu script to be able to successfully launch KVM guest with TAP network interface:
+
+		add_opts "-netdev tap,id=vmnic,ifname=tap0,script=no,downscript=no"
+		add_opts "-device virtio-net-pci,netdev=vmnic"
+
