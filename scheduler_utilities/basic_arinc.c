@@ -53,6 +53,9 @@ void compute_schedule(struct dom_attr *attrs, int hp, int count,
 			sched->sched_entries[sched->num_sched_entries].runtime = DEFAULT_TIMESLICE;
 			copy_uuid(sched->sched_entries[sched->num_sched_entries].dom_handle,
 				  info[dom].uuid.uuid);
+
+			/* TODO: when multi-vCPU support is introduced, this needs change */
+			sched->sched_entries[sched->num_sched_entries].vcpu_id = 0;
 			sched->num_sched_entries++;
 		}
 	}
