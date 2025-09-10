@@ -133,7 +133,9 @@ int main()
 
 	compute_schedule(dom_attrs, hp, nb_domain, &sched, info);
 
+#ifdef ENABLE_DUMP
 	dump_schedule(sched);
+#endif
 
     return 0;
 }
