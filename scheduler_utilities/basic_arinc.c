@@ -14,7 +14,8 @@
 #include <libxl.h>      /* For obtaining DomU information */
 #include <uuid/uuid.h> /* For parsing DomU's handle */
 
-#define DEFAULT_TIMESLICE	1
+#define MILLISECS(x)		((x) * 1000000ULL)
+#define DEFAULT_TIMESLICE	MILLISECS(10)
 
 struct dom_attr {
 	int wcet;
