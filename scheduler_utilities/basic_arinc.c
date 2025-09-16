@@ -16,7 +16,7 @@
 #include <libxl_utils.h> /* For libxl bitmap operations */
 
 #define MILLISECS(x)		((x) * 1000000ULL)
-#define DEFAULT_TIMESLICE	MILLISECS(10)
+#define DEFAULT_TIMESLICE	MILLISECS(1)
 
 struct dom_attr {
 	libxl_uuid uuid;
@@ -47,11 +47,11 @@ void compute_schedule(libxl_ctx *ctx, struct dom_attr *attrs, int hp, int count,
 	libxl_uuid idle_dom;
 	memset(&idle_dom, 0, sizeof(idle_dom));
 
-	sched->major_frame = hp;
+	sched->major_frame = hp*DEFAULT_TIMESLICE;
 	printf("Hyperperiod obtained is: %ld\n", sched->major_frame);
 
 	for (int dom =0; dom < count; dom++) {
-		for (int wcet = 0; wcet < attrs[dom].wcet; wcet++) {
+		for (int wcet = 0; wcet < attrs[dom].wcet*DEFAULT_TIMESLICE; wcet += DEFAULT_TIMESLICE) {
 			sched->sched_entries[sched->num_sched_entries].runtime = DEFAULT_TIMESLICE;
 
 			memcpy(&sched->sched_entries[sched->num_sched_entries].dom_handle,
@@ -63,25 +63,27 @@ void compute_schedule(libxl_ctx *ctx, struct dom_attr *attrs, int hp, int count,
 		}
 	}
 
-	if (sched->major_frame < sched->num_sched_entries) {
+	if (sched->major_frame < sched->num_sched_entries*DEFAULT_TIMESLICE) {
 		printf("Number of schedule entries exceeded major frame. Aborting...\n");
 		return;
 	}
 
-	else if (sched->major_frame == sched->num_sched_entries) {
+	else if (sched->major_frame == sched->num_sched_entries*DEFAULT_TIMESLICE) {
 		printf("There are no idle time slices\n");
 		return;
 	}
 
 	/* Consume up the remaining time-slices with idle entries */
-	for (int entry = sched->num_sched_entries; entry < sched->major_frame; entry++) {
-		sched->sched_entries[entry].runtime = DEFAULT_TIMESLICE;
+	for (int entry = sched->num_sched_entries*DEFAULT_TIMESLICE;
+	     entry < sched->major_frame; entry += DEFAULT_TIMESLICE) {
+
+		sched->sched_entries[entry/DEFAULT_TIMESLICE].runtime = DEFAULT_TIMESLICE;
 
 		/* For idle schedule-entry's domain handle, use Domain-0's handle as a
 		 * placeholder. This is a safe operation because the arinc cpupool will
 		 * never have a Domain-0 included in it's schedule.
 		 */
-		memcpy(&sched->sched_entries[entry].dom_handle, &idle_dom, sizeof(libxl_uuid));
+		memcpy(&sched->sched_entries[entry/DEFAULT_TIMESLICE].dom_handle, &idle_dom, sizeof(libxl_uuid));
 	}
 
 	return;
@@ -101,6 +103,15 @@ void dump_schedule(struct xen_sysctl_arinc653_schedule sched)
 		print(sched.sched_entries[ts].dom_handle);
 }
 
+void sched_stats(struct xen_sysctl_arinc653_schedule sched)
+{
+	printf("Hyper-period: %ld\n", sched.major_frame);
+	printf("Number of schedule entries: %d\n", sched.num_sched_entries);
+
+	dump_schedule(sched);
+
+}
+
 int main()
 {
 	struct xen_sysctl_arinc653_schedule sched = {0};
@@ -108,7 +119,8 @@ int main()
 	libxl_ctx *ctx;
 	libxl_dominfo *info;
 	libxl_cpupoolinfo *pools, arinc_pool;
-	int nb_domain, hp, npools, total_doms, arinc_dom_index=0;
+	xc_interface *xci = xc_interface_open(NULL, NULL, 0);
+	int hp, npools, total_doms, arinc_dom_index=0, result;
 
 	if (libxl_ctx_alloc(&ctx, LIBXL_VERSION, 0, NULL) != 0) {
 		printf("Failed to allocate libxl_ctx_allocate");
@@ -197,5 +209,19 @@ int main()
 	dump_schedule(sched);
 #endif
 
-    return 0;
+	result = xc_sched_arinc653_schedule_set(xci, arinc_pool.poolid, &sched);
+
+#ifdef ENABLE_DUMP
+	sched_stats(sched);
+#endif
+
+	if (result == 0) {
+		printf("ARINC-653 Schedule delivered and set successfully\n");
+    		return 0;
+	}
+
+	else {
+		printf("ARINC-653 schedule failed with Error: %s\n", strerror(-result));
+		return result;
+	}
 }
