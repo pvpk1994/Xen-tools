@@ -99,7 +99,7 @@ void print(xen_domain_handle_t handle)
 
 void dump_schedule(struct xen_sysctl_arinc653_schedule sched)
 {
-	for (int ts = 0; ts < sched.major_frame; ts++)
+	for (int ts = 0; ts < sched.major_frame/DEFAULT_TIMESLICE; ts++)
 		print(sched.sched_entries[ts].dom_handle);
 }
 
@@ -107,14 +107,17 @@ void sched_stats(struct xen_sysctl_arinc653_schedule sched)
 {
 	printf("Hyper-period: %ld\n", sched.major_frame);
 	printf("Number of schedule entries: %d\n", sched.num_sched_entries);
-
-	dump_schedule(sched);
-
 }
 
-int main()
+int main(int argc, char **argv)
 {
-	struct xen_sysctl_arinc653_schedule sched = {0};
+	if (argc < 2) {
+		printf("No argument provided. The utility will only set the schedule.\n");
+	} else {
+		printf("Argument received: Utility will set and get the schedule snapshot.\n");
+	}
+
+	struct xen_sysctl_arinc653_schedule sched = {0}, *sched_get;
 	struct dom_attr *dom_attrs;
 	libxl_ctx *ctx;
 	libxl_dominfo *info;
@@ -215,13 +218,36 @@ int main()
 	sched_stats(sched);
 #endif
 
-	if (result == 0) {
+	if (result == 0)
 		printf("ARINC-653 Schedule delivered and set successfully\n");
-    		return 0;
-	}
 
 	else {
 		printf("ARINC-653 schedule failed with Error: %s\n", strerror(-result));
 		return result;
 	}
+
+	if (argc == 2) {
+		sched_get = malloc(sizeof(struct xen_sysctl_arinc653_schedule));
+		result = xc_sched_arinc653_schedule_get(xci, arinc_pool.poolid, sched_get);
+
+		if (result == 0) {
+			printf("ARINC-653 Schedule obtained successfully\n");
+
+			#ifdef ENABLE_DUMP
+			printf("Hyperperiod: %ld\n", sched_get->major_frame);
+			printf("Timeslice length: %lld ms\n",
+				sched_get->sched_entries[0].runtime/1000000ULL);
+
+			for (int ts = 0; ts < (sched_get->major_frame / DEFAULT_TIMESLICE); ts++) {
+				print(sched_get->sched_entries[ts].dom_handle);
+			}
+			#endif
+
+		} else {
+			printf("ARINC-653 failed to deliver its schedule: %s\n", strerror(-result));
+			return result;
+		}
+	}
+
+	return result;
 }
