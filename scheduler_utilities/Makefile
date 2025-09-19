@@ -12,6 +12,7 @@ ifeq ($(ENABLE_DUMP), 1)
 endif
 
 TARGET	:= basic_arinc
+ARG	:= SCHED_GET
 SRC	:= basic_arinc.c
 
 .PHONY:	all clean
@@ -20,6 +21,9 @@ all:	$(TARGET)
 
 $(TARGET): $(SRC)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+
+run:	$(TARGET)
+	./$(TARGET) $(ARG)
 
 clean:
 	rm -f $(TARGET)
