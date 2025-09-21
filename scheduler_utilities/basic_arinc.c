@@ -21,6 +21,7 @@
 struct dom_attr {
 	libxl_uuid uuid;
 	libxl_domid domid;
+	char *dom_name;
 	int wcet;
 	int period;
 };
@@ -107,6 +108,20 @@ void sched_stats(struct xen_sysctl_arinc653_schedule sched)
 {
 	printf("Hyper-period: %ld\n", sched.major_frame);
 	printf("Number of schedule entries: %d\n", sched.num_sched_entries);
+}
+
+void get_dom_names(libxl_ctx *ctx, xen_sysctl_arinc653_schedule_t *sched,
+		   struct dom_attr *attrs, int count)
+{
+	for (int ts=0; ts < sched->major_frame/DEFAULT_TIMESLICE; ts++) {
+		for (int c=0; c < count; c++) {
+			if (memcmp(&attrs[c].uuid, &sched->sched_entries[ts].dom_handle, sizeof(libxl_uuid)))
+				continue;
+
+			attrs[c].dom_name = libxl_domid_to_name(ctx, attrs[c].domid);
+			printf("Domain: %s @ Timeslice: %d\n", attrs[c].dom_name, ts);
+		}
+	}
 }
 
 int main(int argc, char **argv)
@@ -232,6 +247,8 @@ int main(int argc, char **argv)
 
 		if (result == 0) {
 			printf("ARINC-653 Schedule obtained successfully\n");
+
+			get_dom_names(ctx, sched_get, dom_attrs, arinc_pool.n_dom);
 
 			#ifdef ENABLE_DUMP
 			printf("Hyperperiod: %ld\n", sched_get->major_frame);
