@@ -17,6 +17,7 @@
 
 #define MILLISECS(x)		((x) * 1000000ULL)
 #define DEFAULT_TIMESLICE	MILLISECS(1)
+#define MAX_SCHED_ENTRIES	64
 
 struct dom_attr {
 	libxl_uuid uuid;
@@ -24,6 +25,15 @@ struct dom_attr {
 	char *dom_name;
 	int wcet;
 	int period;
+};
+
+struct json_sched_entries {
+	char *dom_name;
+};
+
+struct json_sched {
+	unsigned long hyperperiod;
+	struct json_sched_entries sched_entries[MAX_SCHED_ENTRIES];
 };
 
 int gcd(int a, int b) { return (b == 0) ? a : gcd(b, a % b); }
@@ -110,18 +120,41 @@ void sched_stats(struct xen_sysctl_arinc653_schedule sched)
 	printf("Number of schedule entries: %d\n", sched.num_sched_entries);
 }
 
-void get_dom_names(libxl_ctx *ctx, xen_sysctl_arinc653_schedule_t *sched,
+struct json_sched get_dom_names(libxl_ctx *ctx, xen_sysctl_arinc653_schedule_t *sched,
 		   struct dom_attr *attrs, int count)
 {
-	for (int ts=0; ts < sched->major_frame/DEFAULT_TIMESLICE; ts++) {
+	struct json_sched jsched;
+	int ts;
+
+	for (ts=0; ts < sched->num_sched_entries; ts++) {
+		/* This gets us the exact number of sc's having valid UUIDs */
 		for (int c=0; c < count; c++) {
 			if (memcmp(&attrs[c].uuid, &sched->sched_entries[ts].dom_handle, sizeof(libxl_uuid)))
 				continue;
 
+			/* Store the dom name in attrs struct */
 			attrs[c].dom_name = libxl_domid_to_name(ctx, attrs[c].domid);
-			printf("Domain: %s @ Timeslice: %d\n", attrs[c].dom_name, ts);
+
+			/* Store this also to JSON exportable schedule */
+			jsched.sched_entries[ts].dom_name = attrs[c].dom_name;
+
 		}
 	}
+
+	jsched.hyperperiod = sched->major_frame/DEFAULT_TIMESLICE;
+
+	/* IDLE slices left */
+	while (ts < jsched.hyperperiod) {
+		jsched.sched_entries[ts].dom_name = "IDLE";
+		ts++;
+	}
+
+	#ifdef ENABLE_DUMP
+	for (ts = 0; ts < jsched.hyperperiod; ts++)
+		printf("TS: %d Sched: %s\n", ts, jsched.sched_entries[ts].dom_name);
+	#endif
+
+	return jsched;
 }
 
 int main(int argc, char **argv)
@@ -134,6 +167,7 @@ int main(int argc, char **argv)
 
 	struct xen_sysctl_arinc653_schedule sched = {0}, *sched_get;
 	struct dom_attr *dom_attrs;
+	struct json_sched jsched = {0};
 	libxl_ctx *ctx;
 	libxl_dominfo *info;
 	libxl_cpupoolinfo *pools, arinc_pool;
@@ -248,7 +282,7 @@ int main(int argc, char **argv)
 		if (result == 0) {
 			printf("ARINC-653 Schedule obtained successfully\n");
 
-			get_dom_names(ctx, sched_get, dom_attrs, arinc_pool.n_dom);
+			jsched = get_dom_names(ctx, sched_get, dom_attrs, arinc_pool.n_dom);
 
 			#ifdef ENABLE_DUMP
 			printf("Hyperperiod: %ld\n", sched_get->major_frame);
