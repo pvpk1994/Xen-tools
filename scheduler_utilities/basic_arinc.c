@@ -10,10 +10,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
-#include <xenctrl.h>    /* For obtaining ARINC 653 scheduler info */
-#include <libxl.h>      /* For obtaining DomU information */
-#include <uuid/uuid.h> /* For parsing DomU's handle */
-#include <libxl_utils.h> /* For libxl bitmap operations */
+#include <xenctrl.h>		/* For obtaining ARINC 653 scheduler info */
+#include <libxl.h>		/* For obtaining DomU information */
+#include <uuid/uuid.h>		/* For parsing DomU's handle */
+#include <libxl_utils.h>	/* For libxl bitmap operations */
+#include <cjson/cJSON.h>	/* For JSON based definitions */
 
 #define MILLISECS(x)		((x) * 1000000ULL)
 #define DEFAULT_TIMESLICE	MILLISECS(1)
@@ -157,6 +158,33 @@ struct json_sched get_dom_names(libxl_ctx *ctx, xen_sysctl_arinc653_schedule_t *
 	return jsched;
 }
 
+void write_sched_to_json(struct json_sched *jsched)
+{
+	cJSON *json_array = cJSON_CreateArray();
+
+	/* Update json_array with 2-nd level entries */
+	for (int t=0; t < jsched->hyperperiod; t++) {
+
+		cJSON *entry_obj = cJSON_CreateObject();
+		cJSON_AddStringToObject(entry_obj, "dom_name", jsched->sched_entries[t].dom_name);
+		cJSON_AddItemToArray(json_array, entry_obj);
+	}
+
+	/* Wrap this up into a 1st-level obj */
+	cJSON *root = cJSON_CreateObject();
+	cJSON_AddItemToObject(root, "sched_entry", json_array);
+
+	/* Dump what is being stored into JSON file: 'sched.json' */
+	char *json_str = cJSON_Print(root);
+	FILE *fp = fopen("sched.json", "w");
+	fputs(json_str, fp);
+	fclose(fp);
+
+	/* Cleanups */
+	cJSON_Delete(root);
+	free(json_str);
+}
+
 int main(int argc, char **argv)
 {
 	if (argc < 2) {
@@ -283,6 +311,7 @@ int main(int argc, char **argv)
 			printf("ARINC-653 Schedule obtained successfully\n");
 
 			jsched = get_dom_names(ctx, sched_get, dom_attrs, arinc_pool.n_dom);
+			write_sched_to_json(&jsched);
 
 			#ifdef ENABLE_DUMP
 			printf("Hyperperiod: %ld\n", sched_get->major_frame);

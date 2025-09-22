@@ -2,7 +2,7 @@
 
 CC	:= gcc
 CFLAGS	:= -Wall
-LDFLAGS	:= -lxenctrl -lxenlight -luuid
+LDFLAGS	:= -lxenctrl -lxenlight -luuid -lcjson
 
 # Config option to enable/disable dumping userspace schedules
 ENABLE_DUMP	?= 0	# set this to 1 to enable dumping
@@ -26,4 +26,4 @@ run:	$(TARGET)
 	./$(TARGET) $(ARG)
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) sched.json
